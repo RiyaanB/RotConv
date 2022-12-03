@@ -4,6 +4,7 @@ from torch.nn.parameter import Parameter
 import math
 import torch
 import torchvision.transforms.functional as TF
+from complex_conv import complex_conv2d
 
 def ntuple(n):
 	def parse(x):
@@ -12,6 +13,21 @@ def ntuple(n):
 		return tuple(itertools.repeat(x, n))
 	return parse
 
+
+def rotate_kernel(kernel, angle):
+	new_weight = TF.rotate(kernel, angle)
+	if kernel.shape[1] == 1:
+		return new_weight
+	if kernel.shape[1] == 2:
+		real_kernels = new_weight[:, 0]
+		imag_kernels = new_weight[:, 1]
+		sintheta, costheta = torch.sin(angle), torch.cos(angle)
+		new_real_kernels = costheta*real_kernels - sintheta*imag_kernels
+		new_imag_kernels = sintheta*real_kernels - costheta*imag_kernels
+		return torch.stack((new_real_kernels, new_imag_kernels), axis=1)
+
+	# return is always [out_channels, complexity, in_channels, k, k]
+	raise Exception()
 
 class ComplexRotConv(nn.Module):
 
@@ -33,14 +49,13 @@ class ComplexRotConv(nn.Module):
 		self.out_channels = out_channels
 
 		self.n_angles = n_angles
-		angles = np.linspace(0, 2*torch.pi, n_angles, endpoint=False)
-		self.angles = torch.tensor(angles, requires_grad=False)
+		self.angle_increment = (2*torch.pi)/self.n_angles
 		
 		self.mode = mode
 		self.complexity = self.modes[mode]
 
-		# weight is [complexity, out_channels, in_channels, k, k]
-		self.weight = Parameter(torch.tensor(complexity, out_channels, in_channels, *kernel_size))
+		# canon weight is [out_channels, complexity, in_channels, k, k]
+		self.canonical_weight = Parameter(torch.tensor(out_channels, complexity, in_channels, *kernel_size))
 
 		self.reset_parameters()
 
@@ -53,55 +68,50 @@ class ComplexRotConv(nn.Module):
 			self.weight[i].data.uniform_(-stdv, stdv)
 
 	def forward(self, input):
-		# input : [batch, 1 or 2, in_channels, 	   axis1, axis2   ]
-		# output: [batch,      2, out_channels, newaxis1, newaxis2]
+		# input : [batch, complexity,  in_channels,    axis1,    axis2]
+		# output: [batch,      	   2, out_channels, newaxis1, newaxis2]
 
-		# input_real is [batch_size, in_channels, axis1, axis2] always
-		input_real = input[:, 0]
+		batch = input.shape[0]
 
-		# stacked_input_real is [batch_size, n_angles*in_channels, axis1, axis2]
-		stacked_input_real = torch.cat([input_real] * self.n_angles, 1)
-
-		# kernel_real is [out_channels, in_channels, k, k]
-		kernel_real = self.weight[0]
-
-		# rotated_kernels is [n_angles * out_channels, in_channels, k, k]
-		rotated_kernels_real = torch.cat([TF.rotate(kernel_real, angle) for angle in self.angles], 0)
+		rotated_weights = []
+		
+		for n_angle in len(self.n_angles):
+			angle = n_angle * self.angle_increment
+			rotated_weights.append(rotate_kernel(self.canonical_weight, angle))
+		# rotate_weights is list of [out_channels, complexity, in_channels, k, k]
+		rotated_weights = torch.stack(rotated_weights, dim=0)
+		# rotate_weights is [n_angles * out_channels, complexity, in_channels, k, k]
 
 		if self.mode == 'real':
 
-			# raw_activations is [n_angles * out_channels, in_channels, k , k]
-			raw_activations = F.Conv2d(stacked_input_real, rotated_kernels_real, None, self.stride, self.padding, self.dilation, n_angles)
-			magnitudes = torch.relu(torch.max(raw_activations, axis=1))
-			arguments = torch.argmax(raw_activations, axis=1) * 2 * torch.pi / self.n_angles
-			out = torch.cat((torch.cos(arguments)*magnitudes, torch.sin(arguments)*magnitudes), axis=1)
-			return out
+			out = F.conv2d(input, rotated_weights[:,0], None, self.stride, self.padding, self.dilation)
+			Hnew, Wnew = out.shape[-2:]
+			raw_activations = out.view(batch, n_angles, self.out_channels, Hnew, Wnew)
+			best_activations = torch.max(raw_activations, dim=1)
+			magnitudes = torch.relu(best_activations.values)
+			# magnitudes is [batch, self.out_channels, Hnew, Wnew]
+			arguments = best_activations.indices * self.angle_increment
+			# arguments is  [batch, self.out_channels, Hnew, Wnew]
+			cos_args = torch.cos(arguments)
+			sin_args = torch.sin(arguments)
+			# returns [batch, 2, self.out_channels, Hnew, Wnew]
+			return torch.stack([cos_args*magnitudes, sin_args*magnitudes], axis=1)
 
 		if self.mode == 'complex':
 
-			# input_imag is [batch_size, in_channels, axis1, axis2] if it exists
-			input_imag = input[:, 1] if self.mode == 'complex' else None
+			out = complex_conv2d(input, rotated_weights, None, self.stride, self.padding, self.dilation)
+			Hnew, Wnew = out.shape[-2:]
+			raw_activations = out.view(batch, 2, n_angles, self.out_channels, Hnew, Wnew)
+			raw_magnitudes = raw_activations[:,0]**2 + raw_activations[:,1]**2
+			# raw_magnitudes is [batch, n_angles, self.out_channels, Hnew, Wnew]
+			best_activations = torch.max(raw_magnitudes, dim=1)
+			magnitudes = raw_magnitudes * (best_activations.values > 1)
+			arguments = best_activations.indices * self.angle_increment
+			cos_args = torch.cos(arguments)
+			sin_args = torch.sin(arguments)
+			return torch.stack([cos_args*magnitudes, sin_args*magnitudes], axis=1)
 
-			# stacked_input_real is [batch_size, n_angles*in_channels, axis1, axis2]
-			stacked_input_imag = torch.cat([input_imag] * self.n_angles, 1)
-
-			# kernel_real is [out_channels, in_channels, k, k]
-			kernel_imag = self.weight[1]
-
-			# rotated_kernels is [n_angles * out_channels, in_channels, k, k]
-			rotated_kernels_imag = torch.cat([TF.rotate(kernel_imag, angle) for angle in self.angles], 0)
-
-			# costhetas and sinthetas are [n_angles * out_channels,]
-			costhetas = torch.cat([torch.cos(self.angles)]*self.out_channels, axis=0)
-			sinthetas = torch.cat([torch.sin(self.angles)]*self.out_channels, axis=0)
-
-			# both should be [n_angles * out_channels, in_channels, k, k]
-			weight_real = costhetas*rotated_kernels_real - sinthetas*rotated_kernels_imag
-			weight_imag = sinthetas*rotated_kernels_real - costhetas*rotated_kernels_imag
-
-			
-
-
+		raise Exception()
 
 if __name__ == '__main__':
 	main()
