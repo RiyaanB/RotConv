@@ -15,6 +15,7 @@ def ntuple(n):
 
 
 def rotate_kernel(kernel, angle):
+	angle = (180/torch.pi) * angle
 	new_weight = TF.rotate(kernel, angle)
 	if kernel.shape[1] == 1:
 		return new_weight
@@ -29,7 +30,7 @@ def rotate_kernel(kernel, angle):
 	# return is always [out_channels, complexity, in_channels, k, k]
 	raise Exception()
 
-class ComplexRotConv(nn.Module):
+class ComplexRotConv2d(nn.Module):
 
 	modes = {
 		'real': 1,
@@ -38,7 +39,7 @@ class ComplexRotConv(nn.Module):
 
 	def __init__(self, in_channels, out_channels, kernel_size, stride=1, 
 		padding=0, dilation=1, n_angles=8, mode='complex'):
-		super(ComplexRotConv, self).__init__()
+		super(ComplexRotConv2d, self).__init__()
 
 		self.kernel_size = ntuple(2)(kernel_size)
 		self.stride = ntuple(2)(stride)
