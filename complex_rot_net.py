@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from complex_rot_conv import ComplexRotConv2d
 
@@ -22,5 +23,5 @@ class ComplexRotNet(nn.Module):
 		net = self.conv3.forward(net)
 		net = self.conv4.forward(net)
 		net = (net[:,0] + net[:,1]*j).view(batch_size, self.fc_out.in_features, -1).mean(2)
-		out = torch.abs(self.fc_out(net))
+		out = nn.ReLU(torch.real(self.fc_out(net)))
 		return out
