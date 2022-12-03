@@ -5,10 +5,12 @@ import math
 import torch
 import torchvision.transforms.functional as TF
 from complex_conv import complex_conv2d
+import itertools
+import collections
 
 def ntuple(n):
 	def parse(x):
-		if isinstance(x, collections.Iterable):
+		if type(x) in [list, tuple]:
 			return x
 		return tuple(itertools.repeat(x, n))
 	return parse
@@ -56,7 +58,7 @@ class ComplexRotConv2d(nn.Module):
 		self.complexity = self.modes[mode]
 
 		# canon weight is [out_channels, complexity, in_channels, k, k]
-		self.canonical_weight = Parameter(torch.tensor(out_channels, complexity, in_channels, *kernel_size))
+		self.canonical_weight = Parameter(torch.randn(self.out_channels, self.complexity, self.in_channels, *self.kernel_size))
 
 		self.reset_parameters()
 
@@ -66,7 +68,7 @@ class ComplexRotConv2d(nn.Module):
 			n *= k
 		stdv = 1. / n**0.5
 		for i in range(self.complexity):
-			self.weight[i].data.uniform_(-stdv, stdv)
+			self.canonical_weight[i].data.uniform_(-stdv, stdv)
 
 	def forward(self, input):
 		# input : [batch, complexity,  in_channels,    axis1,    axis2]
