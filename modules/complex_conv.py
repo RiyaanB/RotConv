@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import time
 
 def complex_conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
 	assert groups == 1	# DOES NOT SUPPORT MULTIPLE GROUPS YET
@@ -30,5 +31,40 @@ def complex_conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, gr
 	apbp[:,0] -= aqbq[:,1]
 	apbp[:,1] += aqbq[:,0]
 
+	assert True not in torch.isnan(apbp)
+
 	return apbp
 
+
+class ComplexConv2d(nn.Module):
+
+	def __init__(self, in_channels, out_channels, kernel_size, stride=1, 
+		padding=0, dilation=1):
+		super(ComplexConv2d, self).__init__()
+
+		self.kernel_size = ntuple(2)(kernel_size)
+		self.k = self.kernel_size[0]
+		self.stride = ntuple(2)(stride)
+		self.padding = ntuple(2)(padding)
+		self.dilation = ntuple(2)(dilation)
+
+		self.in_channels = in_channels
+		self.out_channels = out_channels
+
+		self.weight = Parameter(torch.randn(self.out_channels, 2, self.in_channels, *self.kernel_size))
+
+	def reset_parameters(self):
+		n = self.in_channels
+		for k in self.kernel_size:
+			n *= k
+		stdv = 1. / n**0.5
+		for i in range(self.complexity):
+			self.weight[i].data.uniform_(-stdv, stdv)
+		self.weight.requires_grad = True
+
+	def forward(self, input):
+		assert True not in torch.isnan(input)
+		# assert True not in torch.isnan(self.weight)
+		output = complex_conv2d(input, self.weight, None, self.stride, self.padding, self.dilation)
+		assert True not in torch.isnan(output)
+		return output
