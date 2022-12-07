@@ -16,13 +16,8 @@ for _ in range(N):
 weights = torch.stack(weights)
 new_weights = weights.view(-1, 3, 5, 5)
 
-def shape_equals(shape, tup):
-	return shape == tup
-
-
 def compare(x, y, epsilon=1e-5):
 	return torch.allclose(x, y)
-	# return torch.mean(torch.square(x-y)) < epsilon
 
 
 def ComplexConv2d_v1(input, weight, bias=None, stride=1, padding=0, dilation=1):
