@@ -19,9 +19,8 @@ def ntuple(n):
 
 
 def rotate_kernel(kernel, angle):
-	angle = (180/torch.pi) * angle
 	k, k = kernel.shape[-2:]
-	new_weight = TF.rotate(kernel.view(-1,k,k), angle, interpolation=InterpolationMode.BILINEAR).view(*kernel.shape)
+	new_weight = TF.rotate(kernel.view(-1,k,k), (180/torch.pi) * angle, interpolation=InterpolationMode.BILINEAR).view(*kernel.shape)
 
 	if kernel.shape[1] == 2:
 		real_kernels = new_weight[:, 0]
@@ -46,10 +45,9 @@ def get_circular_mask(h,w):
 def get_rotated_weights(canonical_weight, mask, n_angles):
 	angle_increment = (2*torch.pi)/n_angles
 	rotated_weights = []
-	masked_canonical = mask * canonical_weight
 	for n_angle in range(n_angles):
 		angle = n_angle * angle_increment
-		rotated_weights.append(rotate_kernel(masked_canonical, angle))
+		rotated_weights.append(mask * rotate_kernel(canonical_weight * mask, angle))
 	rotated_weights = torch.cat(rotated_weights, dim=0)
 	assert rotated_weights.shape[0] == n_angles * canonical_weight.shape[0]
 	assert rotated_weights.shape[1:] == canonical_weight.shape[1:]
