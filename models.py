@@ -7,11 +7,11 @@ import time
 
 class RotInvariantNet(nn.Module):
 
-	def __init__(self, c_dim=128, n_angles=8):
+	def __init__(self, in_dim=3, out_dim=128, n_angles=8):
 		super().__init__()
 
 		self.layers = nn.Sequential( 
-			RotInvariantConv2d(3, 32, 7, padding=3, n_angles=n_angles),
+			RotInvariantConv2d(in_dim, 32, 7, padding=3, n_angles=n_angles),
 			nn.ReLU(),
 			RotInvariantConv2d(32, 64, 5, stride=2, padding=2, n_angles=n_angles),
 			nn.ReLU(),
@@ -22,7 +22,7 @@ class RotInvariantNet(nn.Module):
 			nn.Flatten(),
 			nn.Linear(128*4*4, 512), 
 			nn.ReLU(),
-			nn.Linear(512, 10),
+			nn.Linear(512, out_dim),
 		)
 
 	def forward(self, x):
@@ -33,7 +33,7 @@ class RotInvariantNet(nn.Module):
 
 class RotEqNet(nn.Module):
 
-	def __init__(self, c_dim=128, n_angles=8):
+	def __init__(self, in_dim=3, out_dim=128, n_angles=8):
 		super().__init__()
 
 		self.layers = nn.Sequential(
@@ -57,11 +57,11 @@ class RotEqNet(nn.Module):
 
 class ComplexRotEqNet(nn.Module):
 
-	def __init__(self, c_dim=128, n_angles=8):
+	def __init__(self, in_dim=3, out_dim=128, n_angles=8):
 		super().__init__()
 
 		self.layers = nn.Sequential(
-			RotEquivariantConv2d(3, 8, 7, padding=3, n_angles=n_angles, mode='real'),
+			RotEquivariantConv2d(in_dim, 8, 7, padding=3, n_angles=n_angles, mode='real'),
 			RotEquivariantConv2d(8, 16, 5, stride=2, padding=2, n_angles=n_angles),
 			RotEquivariantConv2d(16, 32, 5, stride=2, padding=2, n_angles=n_angles),
 			RotEquivariantConv2d(32, 64, 5, stride=2, padding=2, n_angles=n_angles),
@@ -72,7 +72,7 @@ class ComplexRotEqNet(nn.Module):
 			nn.Linear(1024, 512),
 			ToReal(),
 			nn.ReLU(),
-			nn.Linear(1024, 10),
+			nn.Linear(1024, out_dim),
 		)
 
 	def forward(self, x):
@@ -83,7 +83,7 @@ class ComplexRotEqNet(nn.Module):
 
 class ConvNet(nn.Module):
 
-	def __init__(self, c_dim=128):
+	def __init__(self, in_dim=3, out_dim=128):
 		super().__init__()
 		self.layers = nn.Sequential( 
 			nn.Conv2d(3, 32, 7, padding=3),
