@@ -20,7 +20,7 @@ class RotInvariantConv2d(nn.Module):
 		# canon weight is [out_channels, complexity, in_channels, k, k]
 		self.canonical_weight = Parameter(torch.randn(self.out_channels, self.in_channels, *self.kernel_size))
 
-		self.mask = torch.tensor(get_circular_mask(*self.kernel_size)).repeat(out_channels, in_channels, 1, 1).to('cuda')
+		self.mask = Parameter(torch.tensor(get_circular_mask(*self.kernel_size)).repeat(out_channels, in_channels, 1, 1).to(torch.float))
 
 		self.reset_parameters()
 
